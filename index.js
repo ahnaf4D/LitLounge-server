@@ -21,6 +21,7 @@ const client = new MongoClient(uri, {
 });
 // custom middlewares 
 const verifyToken = async (req, res, next) => {
+    // token correctly coming
     if (!req.headers.authorization) {
         return res.status(401).send({ message: 'unauthorized access' });
     }
@@ -61,7 +62,7 @@ async function run() {
             next();
         }
         const verifyAdmin = async (req, res, next) => {
-            const email = req.query.email;
+            const email = req.decoded.email; // quick fix
             const query = { email: email };
             const user = await usersCollection.findOne(query);
             const isAdmin = user?.role === 'admin';
@@ -91,6 +92,7 @@ async function run() {
                 res.status(500).send({ massage: "Internal server error" });
             }
         })
+        // get an single users
         app.get(`/user`, verifyToken, async (req, res) => {
             try {
                 const { email } = req.query;
@@ -104,6 +106,17 @@ async function run() {
                 res.status(200).json(user);
             }
             catch (error) {
+                console.error('Error fetching user:', error.message);
+                res.status(500).json({ message: 'Internal Server Error' });
+            }
+        })
+        // get all users
+        app.get('/all-users', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const totalUsers = await usersCollection.countDocuments();
+                const users = await usersCollection.find().toArray();
+                res.status(200).send({ users, totalUsers });
+            } catch (error) {
                 console.error('Error fetching user:', error.message);
                 res.status(500).json({ message: 'Internal Server Error' });
             }
@@ -123,9 +136,26 @@ async function run() {
         // Get all products
         app.get('/products', async (req, res) => {
             try {
+                const { title, sort, category, brand, page = 1, limit = 6 } = req.query;
                 const query = {};
-                const products = await productsCollection.find(query).toArray();
-                res.status(200).send(products);
+                if (title) {
+                    query.title = { $regex: title, $options: 'i' };
+                }
+                if (category) {
+                    query.category = category;
+                }
+                if (brand) {
+                    query.brand = brand;
+                }
+                const pageNumber = Number(page);
+                const limitNumber = Number(limit);
+                const sortOptions = sort == 'asc' ? 1 : -1;
+                const products = await productsCollection.find(query).skip((pageNumber - 1) * limitNumber).sort({ price: sortOptions }).limit(limitNumber).toArray();
+                const totalProducts = await productsCollection.countDocuments(query);
+                const productBrand = [... new Set(products.map((p) => p.productBrand))];
+                const productCategory = [... new Set(products.map((p) => p.
+                    productCategory))];
+                res.status(200).json({ products, productBrand, productCategory, totalProducts, pageNumber, limit })
             }
             catch (error) {
                 console.error('Error getting products:', error.message);
@@ -147,7 +177,6 @@ async function run() {
                 res.status(500).send({ message: 'An error occurred while getting own products' });
             }
         });
-
         // Get a single products
         app.get('/products/:id', async (req, res) => {
             const { id } = req.params;
