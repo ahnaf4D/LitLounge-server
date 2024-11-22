@@ -121,6 +121,49 @@ async function run() {
                 res.status(500).json({ message: 'Internal Server Error' });
             }
         })
+        // change user role
+        app.patch('/users/:id/role', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const userId = req.params.id;
+                const { role } = req.body;
+                const validRoles = ['admin', 'customer', 'seller'];
+                if (!validRoles.includes(role)) {
+                    return res.status(400).json({ massage: "Invalid role specified" });
+                }
+                const result = await usersCollection.updateOne(
+                    { _id: new ObjectId(userId) },
+                    { $set: { role } }
+                )
+                if (result.modifiedCount === 0) {
+                    return res.status(404).json({ message: 'User not found or role not updated' });
+                }
+                res.status(200).send({ message: 'User role updated successfully', updatedRole: role });
+            } catch (error) {
+                console.error('Error updating user role:', error.message);
+                res.status(500).json({ message: 'Internal Server Error' });
+            }
+        })
+        // delete a user
+        app.delete('/users/:id', verifyToken, verifyAdmin, async (req, res) => {
+            try {
+                const userId = req.params.id;
+                const user = await usersCollection.findOne({ _id: new ObjectId(userId) });
+                if (!user) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+                const deleteResult = await usersCollection.deleteOne({ _id: new ObjectId(userId) });
+                if (deleteResult.deletedCount === 0) {
+                    return res.status(404).json({ message: 'Failed to delete user' });
+                }
+                if (user.role === 'seller') {
+                    const productsResult = await productsCollection.deleteMany({ sellerEmail: user.email });
+                }
+                res.status(200).json({ message: 'User and associated data deleted successfully' });
+            } catch (error) {
+                console.error('Error deleting user or products:', error.message);
+                res.status(500).json({ message: 'Internal Server Error' });
+            }
+        })
         // Create a product
         app.post('/products', verifyToken, verifySeller, async (req, res) => {
             try {
