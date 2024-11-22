@@ -132,8 +132,24 @@ async function run() {
                 res.status(500).send({ message: 'An error occurred while getting the product' });
             }
         })
+        // Get seller own products
+        app.get('/my-products', verifyToken, verifySeller, async (req, res) => {
+            try {
+                const email = req.query.email;
+                if (!email) {
+                    return res.status(400).send({ message: 'Email is required' }); // Handle missing email
+                }
+                const query = { sellerEmail: email }; // Construct the query
+                const myProducts = await productsCollection.find(query).toArray(); // Fetch products matching the email
+                res.status(200).send(myProducts);
+            } catch (error) {
+                console.error('Error getting own products:', error.message);
+                res.status(500).send({ message: 'An error occurred while getting own products' });
+            }
+        });
+
         // Get a single products
-        app.get('/products/:id', verifyToken, async (req, res) => {
+        app.get('/products/:id', async (req, res) => {
             const { id } = req.params;
             try {
                 if (!ObjectId.isValid(id)) {
@@ -150,30 +166,62 @@ async function run() {
                 res.status(500).send({ message: 'An error occurred while get a single product' });
             }
         })
-        // Update a product data
         app.put('/products/:id', verifyToken, verifySeller, async (req, res) => {
             try {
-                const productId = req.params.id;
+                const productId = req.params.id; // Get the ID from the route params
                 const updatedData = req.body;
-                // update operation
+                if (!ObjectId.isValid(productId)) {
+                    return res.status(400).json({ message: 'Invalid product ID' });
+                }
+                if (updatedData._id) {
+                    delete updatedData._id;
+                }
+                // Perform the update operation
                 const result = await productsCollection.updateOne(
-                    { _id: ObjectId(productId) },
+                    { _id: new ObjectId(productId) }, // Create an ObjectId instance
                     { $set: updatedData }
                 );
-                if (result.matchedCount == 0) {
-                    return res.status(404).send({ massage: "Product not found" });
+
+                // Handle scenarios
+                if (result.matchedCount === 0) {
+                    return res.status(404).json({ message: "Product not found" });
                 }
-                if (result.modifiedCount == 0) {
+
+                if (result.modifiedCount === 0) {
                     return res.status(400).json({ message: 'No changes were made to the product' });
                 }
-                res.status(200).json({
-                    massage: "product updated successfully";
-                })
+
+                // Success response
+                res.status(200).json({ message: "Product updated successfully" });
             } catch (error) {
-                console.error('Error update single product:', error.message);
-                res.status(500).send({ message: 'An error occurred while update a single product' });
+                console.error('Error updating single product:', error.message);
+                res.status(500).json({ message: 'An error occurred while updating the product' });
             }
-        })
+        });
+        app.delete('/products/:id', verifyToken, verifySeller, async (req, res) => {
+            try {
+                const productId = req.params.id; // Get the product ID from the route params
+                // Check if the productId is a valid ObjectId
+                if (!ObjectId.isValid(productId)) {
+                    return res.status(400).json({ message: 'Invalid product ID' });
+                }
+
+                // Perform the delete operation
+                const result = await productsCollection.deleteOne(
+                    { _id: new ObjectId(productId) } // Match the product by _id
+                );
+                if (result.deletedCount === 0) {
+                    return res.status(404).json({ message: 'Product not found' });
+                }
+                // Success response
+                res.status(200).json({ message: 'Product deleted successfully' });
+            } catch (error) {
+                console.error('Error deleting single product:', error.message);
+                res.status(500).json({ message: 'An error occurred while deleting the product' });
+            }
+        });
+
+
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
