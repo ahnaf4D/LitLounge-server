@@ -6,7 +6,7 @@ const jwt = require('jsonwebtoken');
 const app = express();
 const port = process.env.PORT || 3001;
 const corsOptions = {
-    origin: ['http://localhost:5173', 'http://localhost:5174',],
+    origin: ['http://localhost:5173', 'http://localhost:5174', 'https://litlounge-books.web.app', 'https://litlounge-books.firebaseapp.com'],
     optionsSuccessStatus: 200
 }
 app.use(cors(corsOptions));
