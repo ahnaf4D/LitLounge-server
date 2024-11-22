@@ -33,40 +33,43 @@ const verifyToken = async (req, res, next) => {
         next();
     })
 }
-const verifyCustomer = async (req, res, next) => {
-    const email = req.query.email;
-    const query = { email: email };
-    const user = await usersCollection.findOne(query);
-    const isCustomer = user?.role === 'customer';
-    if (!isCustomer) {
-        return res.status(403).send({ massage: "forbidden access" });
-    }
-    next();
-}
-const verifySeller = async (req, res, next) => {
-    const email = req.decoded.email;
-    const query = { email: email };
-    const user = await usersCollection.findOne(query);
-    const isSeller = user?.role === 'seller';
-    if (!isSeller) {
-        return res.status(403).send({ massage: "forbidden access" });
-    }
-    next();
-}
-const verifyAdmin = async (req, res, next) => {
-    const email = req.query.email;
-    const query = { email: email };
-    const user = await usersCollection.findOne(query);
-    const isAdmin = user?.role === 'admin';
-    if (!isAdmin) {
-        return res.status(403).send({ massage: "forbidden access" });
-    }
-    next();
-}
+
 async function run() {
     try {
         const db = client.db('LitLounge-DB');
         const usersCollection = db.collection('users');
+        const productsCollection = db.collection('products');
+        // role verification middlewares
+        const verifyCustomer = async (req, res, next) => {
+            const email = req.query.email;
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            const isCustomer = user?.role === 'customer';
+            if (!isCustomer) {
+                return res.status(403).send({ massage: "forbidden access" });
+            }
+            next();
+        }
+        const verifySeller = async (req, res, next) => {
+            const email = req.decoded.email;
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            const isSeller = user?.role === 'seller';
+            if (!isSeller) {
+                return res.status(403).send({ massage: "forbidden access" });
+            }
+            next();
+        }
+        const verifyAdmin = async (req, res, next) => {
+            const email = req.query.email;
+            const query = { email: email };
+            const user = await usersCollection.findOne(query);
+            const isAdmin = user?.role === 'admin';
+            if (!isAdmin) {
+                return res.status(403).send({ massage: "forbidden access" });
+            }
+            next();
+        }
         // ping db
         await client.db("admin").command({ ping: 1 });
         console.log("Pinged your deployment. You successfully connected to MongoDB!");
@@ -103,6 +106,30 @@ async function run() {
             catch (error) {
                 console.error('Error fetching user:', error.message);
                 res.status(500).json({ message: 'Internal Server Error' });
+            }
+        })
+        // Create a product
+        app.post('/products', verifyToken, verifySeller, async (req, res) => {
+            try {
+                const productData = req.body;
+                const result = await productsCollection.insertOne(productData);
+                res.status(201).send(result);
+            }
+            catch (error) {
+                console.error('Error adding product:', error.message);
+                res.status(500).send({ message: 'An error occurred while adding the product' });
+            }
+        })
+        // Get all products
+        app.get('/products', async (req, res) => {
+            try {
+                const query = {};
+                const products = await productsCollection.find(query).toArray();
+                res.status(200).send(products);
+            }
+            catch (error) {
+                console.error('Error getting products:', error.message);
+                res.status(500).send({ message: 'An error occurred while getting the product' });
             }
         })
     } finally {
