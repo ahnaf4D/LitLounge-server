@@ -19,6 +19,7 @@ const client = new MongoClient(uri, {
         deprecationErrors: true,
     }
 });
+// custom middlewares 
 const verifyToken = async (req, res, next) => {
     if (!req.headers.authorization) {
         return res.status(401).send({ message: 'unauthorized access' });
@@ -31,6 +32,36 @@ const verifyToken = async (req, res, next) => {
         req.decoded = decoded;
         next();
     })
+}
+const verifyCustomer = async (req, res, next) => {
+    const email = req.query.email;
+    const query = { email: email };
+    const user = await usersCollection.findOne(query);
+    const isCustomer = user?.role === 'customer';
+    if (!isCustomer) {
+        return res.status(403).send({ massage: "forbidden access" });
+    }
+    next();
+}
+const verifySeller = async (req, res, next) => {
+    const email = req.decoded.email;
+    const query = { email: email };
+    const user = await usersCollection.findOne(query);
+    const isSeller = user?.role === 'seller';
+    if (!isSeller) {
+        return res.status(403).send({ massage: "forbidden access" });
+    }
+    next();
+}
+const verifyAdmin = async (req, res, next) => {
+    const email = req.query.email;
+    const query = { email: email };
+    const user = await usersCollection.findOne(query);
+    const isAdmin = user?.role === 'admin';
+    if (!isAdmin) {
+        return res.status(403).send({ massage: "forbidden access" });
+    }
+    next();
 }
 async function run() {
     try {
