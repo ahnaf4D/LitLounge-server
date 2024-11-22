@@ -1,7 +1,7 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
-const { MongoClient, ServerApiVersion } = require('mongodb');
+const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const app = express();
 const port = process.env.PORT || 3001;
@@ -130,6 +130,48 @@ async function run() {
             catch (error) {
                 console.error('Error getting products:', error.message);
                 res.status(500).send({ message: 'An error occurred while getting the product' });
+            }
+        })
+        // Get a single products
+        app.get('/products/:id', verifyToken, async (req, res) => {
+            const { id } = req.params;
+            try {
+                if (!ObjectId.isValid(id)) {
+                    return res.status(400).json({ massage: "Invalid product id format" });
+                }
+                const product = await productsCollection.findOne({ _id: new ObjectId(id) });
+                if (!product) {
+                    return res.status(404).json({ massage: "Product not found" });
+                }
+                res.status(200).json(product);
+            }
+            catch (error) {
+                console.error('Error get single product:', error.message);
+                res.status(500).send({ message: 'An error occurred while get a single product' });
+            }
+        })
+        // Update a product data
+        app.put('/products/:id', verifyToken, verifySeller, async (req, res) => {
+            try {
+                const productId = req.params.id;
+                const updatedData = req.body;
+                // update operation
+                const result = await productsCollection.updateOne(
+                    { _id: ObjectId(productId) },
+                    { $set: updatedData }
+                );
+                if (result.matchedCount == 0) {
+                    return res.status(404).send({ massage: "Product not found" });
+                }
+                if (result.modifiedCount == 0) {
+                    return res.status(400).json({ message: 'No changes were made to the product' });
+                }
+                res.status(200).json({
+                    massage: "product updated successfully";
+                })
+            } catch (error) {
+                console.error('Error update single product:', error.message);
+                res.status(500).send({ message: 'An error occurred while update a single product' });
             }
         })
     } finally {
