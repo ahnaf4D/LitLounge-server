@@ -1,6 +1,8 @@
 require('dotenv').config()
 const express = require('express')
 const cors = require('cors')
+const { v4: uuidv4 } = require('uuid');
+const moment = require('moment');
 const { MongoClient, ServerApiVersion, ObjectId } = require('mongodb');
 const jwt = require('jsonwebtoken');
 const app = express();
@@ -40,6 +42,7 @@ async function run() {
         const db = client.db('LitLounge-DB');
         const usersCollection = db.collection('users');
         const productsCollection = db.collection('products');
+        const paymentsCollection = db.collection('payments');
         // role verification middlewares
         const verifyCustomer = async (req, res, next) => {
             const email = req.decoded.email;
@@ -466,8 +469,98 @@ async function run() {
                 res.status(500).json({ message: 'An error occurred while deleting the product' });
             }
         });
+        // Fake Payment api
+        app.post('/create-payment', verifyToken, verifyCustomer, async (req, res) => {
+            try {
+                const email = req.query.email;
+                const { productIds, payableAmount } = req.body;
 
+                // Validate the input
+                if (!email || !Array.isArray(productIds) || productIds.length === 0 || !payableAmount) {
+                    return res.status(400).json({
+                        success: false,
+                        message: "Invalid input: Please provide email, productIds (array), and payableAmount.",
+                    });
+                }
 
+                // Find the user by email
+                const user = await usersCollection.findOne({ email });
+                if (!user) {
+                    return res.status(404).json({
+                        success: false,
+                        message: "User not found.",
+                    });
+                }
+
+                // Check if all productIds exist in the user's cart
+                const cartProducts = user.cart || [];
+                const missingProducts = productIds.filter(id => !cartProducts.includes(id));
+                if (missingProducts.length > 0) {
+                    return res.status(400).json({
+                        success: false,
+                        message: `Some products are not in the cart: ${missingProducts.join(', ')}`,
+                    });
+                }
+
+                // Clear the user's cart
+                const updateResult = await usersCollection.updateOne(
+                    { email },
+                    { $set: { cart: [] } }
+                );
+
+                if (updateResult.modifiedCount === 0) {
+                    return res.status(500).json({
+                        success: false,
+                        message: "Failed to clear the cart.",
+                    });
+                }
+
+                // Generate transaction ID and payment time
+                const transactionId = uuidv4();
+                const paymentTime = moment().format('YYYY-MM-DD HH:mm:ss');
+
+                // Prepare payment data with only product IDs
+                const paymentData = {
+                    customerEmail: email,
+                    productIds, // Only store product IDs
+                    transactionId,
+                    paymentTime,
+                    payableAmount,
+                };
+
+                // Insert payment record into the database
+                await paymentsCollection.insertOne(paymentData);
+
+                res.status(200).json({
+                    success: true,
+                    data: paymentData,
+                });
+            } catch (error) {
+                console.error(error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message,
+                });
+            }
+        });
+
+        app.get('/payments-info', verifyToken, verifyCustomer, async (req, res) => {
+            try {
+                const email = req.query.email;
+                const query = { customerEmail: email };
+                const result = await paymentsCollection.find(query).toArray();
+                res.status(200).send(result);
+            }
+            catch (error) {
+                console.error(error);
+                res.status(500).json({
+                    success: false,
+                    message: 'Internal server error',
+                    error: error.message,
+                });
+            }
+        })
     } finally {
         // Ensures that the client will close when you finish/error
         // await client.close();
