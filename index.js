@@ -26,7 +26,6 @@ const verifyToken = async (req, res, next) => {
         return res.status(401).send({ message: 'unauthorized access' });
     }
     const token = req.headers.authorization;
-    console.log('line : 29 = ', token);
     jwt.verify(token, process.env.JWT_ACCESS_TOKEN, (err, decoded) => {
         if (err) {
             return res.status(401).send({ message: 'unauthorized access' })
@@ -112,6 +111,33 @@ async function run() {
                 res.status(500).json({ message: 'Internal Server Error' });
             }
         })
+        // add products to customer cart
+        app.patch('/cart', async (req, res) => {
+            try {
+                const { id, email } = req.query;
+                const query = { email };
+                const user = await usersCollection.findOne(query);
+                if (!user) {
+                    return res.status(404).json({ message: "User not found with the provided email" });
+                }
+                if (user.cart.includes(id)) { // is id already exits
+                    return res.status(400).json({ message: "Product is already in the cart" });
+                }
+                const updatedUser = await usersCollection.updateOne(
+                    { email }, // Match by the user's email
+                    { $push: { cart: id } } // Push the new 'id' into the 'cart' array
+                );
+                if (updatedUser.matchedCount === 0) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+                return res.status(200).json({ message: 'Product added to cart successfully' });
+
+            } catch (error) {
+                console.error(error);
+                return res.status(500).json({ message: 'Internal server error', error: error.message });
+            }
+        });
+
         // get all users
         app.get('/all-users', verifyToken, verifyAdmin, async (req, res) => {
             try {
@@ -123,9 +149,11 @@ async function run() {
                 res.status(500).json({ message: 'Internal Server Error' });
             }
         })
+
         // change user role
         app.patch('/users/:id/role', verifyToken, verifyAdmin, async (req, res) => {
             try {
+                console.log("server hit on it.....");
                 const userId = req.params.id;
                 const { role } = req.body;
                 const validRoles = ['admin', 'customer', 'seller'];
@@ -300,29 +328,7 @@ async function run() {
                 res.status(500).json({ message: 'An error occurred while deleting the product' });
             }
         });
-        // add products to customer cart
-        app.patch('/cart', verifyToken, verifyCustomer, async (req, res) => {
-            try {
-                const { id, email } = req.query;
-                console.log(`from 305 line : ${id} + ${email}`);
-                const query = { email };
-                const user = await usersCollection.findOne(query);
-                if (!user) {
-                    return res.status(404).send({ message: "User not found with the provided email" });
-                }
-                const updatedUser = await usersCollection.updateOne(
-                    { email }, // Match by the user's email
-                    { $push: { cart: id } } // Push the new 'id' into the 'cart' array
-                );
-                if (updatedUser.matchedCount === 0) {
-                    return res.status(404).json({ message: 'User not found' });
-                }
-                return res.status(200).json({ message: 'Product added to cart successfully' });
-            } catch (error) {
-                console.error(error);
-                return res.status(500).json({ message: 'Internal server error', error: error.message });
-            }
-        });
+
 
     } finally {
         // Ensures that the client will close when you finish/error
