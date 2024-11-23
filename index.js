@@ -181,28 +181,34 @@ async function run() {
             try {
                 const { title, sort, category, brand, page = 1, limit = 6 } = req.query;
                 const query = {};
-                if (title) {
-                    query.title = { $regex: title, $options: 'i' };
-                }
-                if (category) {
-                    query.category = category;
-                }
-                if (brand) {
-                    query.brand = brand;
-                }
-                const pageNumber = Number(page);
-                const limitNumber = Number(limit);
-                const sortOptions = sort == 'asc' ? 1 : -1;
-                const products = await productsCollection.find(query).skip((pageNumber - 1) * limitNumber).sort({ price: sortOptions }).limit(limitNumber).toArray();
+                if (title) query.productName = { $regex: title, $options: 'i' };
+                if (category) query.productCategory = category;
+                if (brand) query.productBrand = brand;
+                const pageNumber = parseInt(page, 10) || 1;
+                const limitNumber = parseInt(limit, 10) || 6;
+                const sortOptions = sort === 'asc' ? 1 : -1;
+                const products = await productsCollection
+                    .find(query)
+                    .skip((pageNumber - 1) * limitNumber)
+                    .sort({ productPrice: sortOptions })
+                    .limit(limitNumber)
+                    .toArray();
                 const totalProducts = await productsCollection.countDocuments(query);
-                const productBrand = [... new Set(products.map((p) => p.productBrand))];
-                const productCategory = [... new Set(products.map((p) => p.
-                    productCategory))];
-                res.status(200).json({ products, productBrand, productCategory, totalProducts, pageNumber, limit })
+                const allProducts = await productsCollection.find({}).toArray();
+                const productBrand = [...new Set(allProducts.map((p) => p.productBrand))];
+                const productCategory = [...new Set(allProducts.map((p) => p.productCategory))];
+                res.status(200).json({
+                    products,
+                    productBrand,
+                    productCategory,
+                    totalProducts,
+                    pageNumber,
+                    limit: limitNumber
+                });
             }
             catch (error) {
-                console.error('Error getting products:', error.message);
-                res.status(500).send({ message: 'An error occurred while getting the product' });
+                console.error('Error fetching products:', error.message);
+                res.status(500).send({ message: 'An error occurred while fetching products.' });
             }
         })
         // Get seller own products
