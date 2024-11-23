@@ -133,10 +133,32 @@ async function run() {
                 return res.status(500).json({ message: 'Internal server error', error: error.message });
             }
         });
+        // get all wishlist items for customers
+        app.get('/wishlist-items', verifyToken, verifyCustomer, async (req, res) => {
+            try {
+                const { email } = req.query;
+                if (!email) {
+                    return res.status(400).json({ message: "Email is required" });
+                }
+                const user = await usersCollection.findOne({ email }, { projection: { wishlist: 1, _id: 0 } });
+                if (!user) {
+                    return res.status(404).json({ message: "User not found with the provided email" });
+                }
+                const wishlistProductIds = user.wishlist || [];
+                if (wishlistProductIds.length === 0) {
+                    return res.status(200).json({ wishlist: [] });
+                }
+                // Fetch all products from productsCollection based on wishlistProductIds
+                const wishlistProducts = await productsCollection.find({ _id: { $in: wishlistProductIds.map(id => new ObjectId(id)) } }).toArray();
+                return res.status(200).json({ wishlist: wishlistProducts });
+            } catch (error) {
+                console.error(error);
+                return res.status(500).json({ message: 'Internal server error', error: error.message });
+            }
+        });
         // remove cart items for customers
         app.delete('/cart-items/:id', verifyToken, verifyCustomer, async (req, res) => {
             try {
-                console.log("hit on the endpoint..... 139 line");
                 const productId = req.params.id;
                 const email = req.query.email;
                 if (!ObjectId.isValid(productId)) {
@@ -160,29 +182,7 @@ async function run() {
                 res.status(500).json({ message: 'An error occurred while removing the product from cart' });
             }
         });
-        // get all wishlist items for customers
-        app.get('/wishlist-items', verifyToken, verifyCustomer, async (req, res) => {
-            try {
-                const { email } = req.query;
-                if (!email) {
-                    return res.status(400).json({ message: "Email is required" });
-                }
-                const user = await usersCollection.findOne({ email }, { projection: { cart: 1, _id: 0 } });
-                if (!user) {
-                    return res.status(404).json({ message: "User not found with the provided email" });
-                }
-                const wishlistProductIds = user.wishlist || [];
-                if (wishlistProductIds.length === 0) {
-                    return res.status(200).json({ wishlist: [] });
-                }
-                // Fetch all products from productsCollection based on wishlistProductIds
-                const wishlistProducts = await productsCollection.find({ _id: { $in: wishlistProductIds.map(id => new ObjectId(id)) } }).toArray();
-                return res.status(200).json({ wishlist: wishlistProducts });
-            } catch (error) {
-                console.error(error);
-                return res.status(500).json({ message: 'Internal server error', error: error.message });
-            }
-        });
+
         // remove wishlist items for customers
         app.delete('/wishlist-items/:id', verifyToken, verifyCustomer, async (req, res) => {
             try {
