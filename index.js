@@ -43,7 +43,6 @@ async function run() {
         // role verification middlewares
         const verifyCustomer = async (req, res, next) => {
             const email = req.decoded.email;
-            console.log('line : 46 = ', email);
             const query = { email: email };
             const user = await usersCollection.findOne(query);
             const isCustomer = user?.role === 'customer';
@@ -111,33 +110,136 @@ async function run() {
                 res.status(500).json({ message: 'Internal Server Error' });
             }
         })
-        // add products to customer cart
-        app.patch('/cart', async (req, res) => {
+        // get all cart items for customers
+        app.get('/cart-items', verifyToken, verifyCustomer, async (req, res) => {
             try {
-                const { id, email } = req.query;
-                const query = { email };
-                const user = await usersCollection.findOne(query);
+                const { email } = req.query;
+                if (!email) {
+                    return res.status(400).json({ message: "Email is required" });
+                }
+                const user = await usersCollection.findOne({ email }, { projection: { cart: 1, _id: 0 } });
                 if (!user) {
                     return res.status(404).json({ message: "User not found with the provided email" });
                 }
-                if (user.cart.includes(id)) { // is id already exits
-                    return res.status(400).json({ message: "Product is already in the cart" });
+                const cartProductIds = user.cart || [];
+                if (cartProductIds.length === 0) {
+                    return res.status(200).json({ cart: [] });
                 }
-                const updatedUser = await usersCollection.updateOne(
-                    { email }, // Match by the user's email
-                    { $push: { cart: id } } // Push the new 'id' into the 'cart' array
-                );
-                if (updatedUser.matchedCount === 0) {
-                    return res.status(404).json({ message: 'User not found' });
-                }
-                return res.status(200).json({ message: 'Product added to cart successfully' });
-
+                // Fetch all products from productsCollection based on cartProductIds
+                const cartProducts = await productsCollection.find({ _id: { $in: cartProductIds.map(id => new ObjectId(id)) } }).toArray();
+                return res.status(200).json({ cart: cartProducts });
             } catch (error) {
                 console.error(error);
                 return res.status(500).json({ message: 'Internal server error', error: error.message });
             }
         });
+        // remove cart items for customers
+        app.delete('/cart-items/:id', verifyToken, verifyCustomer, async (req, res) => {
+            try {
+                const productId = req.params.id;
+                if (!ObjectId.isValid(productId)) {
+                    return res.status(400).json({ message: 'Invalid product ID' });
+                }
+                const result = await productsCollection.deleteOne(
+                    { _id: new ObjectId(productId) } // Match the product by _id
+                );
+                if (result.deletedCount === 0) {
+                    return res.status(404).json({ message: 'Product not found' });
+                }
+                // Success response
+                res.status(200).json({ message: 'Product deleted successfully' });
+            } catch (error) {
+                console.error('Error deleting cart product:', error.message);
+                res.status(500).json({ message: 'An error occurred while deleting the product' });
+            }
 
+        })
+        // get all wishlist items for customers
+        app.get('/wishlist-items', verifyToken, verifyCustomer, async (req, res) => {
+            try {
+                const { email } = req.query;
+                if (!email) {
+                    return res.status(400).json({ message: "Email is required" });
+                }
+                const user = await usersCollection.findOne({ email }, { projection: { wishlist: 1, _id: 0 } });
+                if (!user) {
+                    return res.status(404).json({ message: "User not found with the provided email" });
+                }
+                return res.status(200).json({ wishlist: user.wishlist || [] });
+            } catch (error) {
+                console.error(error);
+                return res.status(500).json({ message: 'Internal server error', error: error.message });
+            }
+        })
+
+        // add products to customer cart
+        app.patch('/cart', async (req, res) => {
+            try {
+                const { id, email } = req.query;
+                if (!id || !email) {
+                    return res.status(400).json({ message: "Product ID and email are required" });
+                }
+                const query = { email };
+                const user = await usersCollection.findOne(query);
+                if (!user) {
+                    return res.status(404).json({ message: "User not found with the provided email" });
+                }
+                if (user.cart && user.cart.includes(id)) {
+                    return res.status(400).json({ message: "Product is already in the cart" });
+                }
+                if (user.wishlist && user.wishlist.includes(id)) {
+                    await usersCollection.updateOne(
+                        { email },
+                        { $pull: { wishlist: id } }
+                    );
+                }
+                // Add the product to the cart
+                const updatedUser = await usersCollection.updateOne(
+                    { email }, // Match by the user's email
+                    { $push: { cart: id } }
+                );
+
+                if (updatedUser.matchedCount === 0) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+                return res.status(200).json({ message: 'Product added to cart successfully' });
+            } catch (error) {
+                console.error(error);
+                return res.status(500).json({ message: 'Internal server error', error: error.message });
+            }
+        });
+        // add products to customer wishlist 
+        app.patch('/wishlist', async (req, res) => {
+            try {
+                const { id, email } = req.query;
+                if (!id || !email) {
+                    return res.status(400).json({ message: "Product ID and email are required" });
+                }
+                const query = { email };
+                const user = await usersCollection.findOne(query);
+                if (!user) {
+                    return res.status(404).json({ message: "User not found with the provided email" });
+                }
+                if (user.cart && user.cart.includes(id)) {
+                    return res.status(400).json({ message: "Product is already in the cart" });
+                }
+                if (user.wishlist && user.wishlist.includes(id)) {
+                    return res.status(400).json({ message: "Product is already in the wishlist" });
+                }
+                const updatedUser = await usersCollection.updateOne(
+                    { email }, // Match by the user's email
+                    { $push: { wishlist: id } } // Push the new 'id' into the 'wishlist' array
+                );
+                if (updatedUser.matchedCount === 0) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+
+                return res.status(200).json({ message: 'Product added to wishlist successfully' });
+            } catch (error) {
+                console.error(error);
+                return res.status(500).json({ message: 'Internal server error', error: error.message });
+            }
+        });
         // get all users
         app.get('/all-users', verifyToken, verifyAdmin, async (req, res) => {
             try {
