@@ -136,24 +136,30 @@ async function run() {
         // remove cart items for customers
         app.delete('/cart-items/:id', verifyToken, verifyCustomer, async (req, res) => {
             try {
+                console.log("hit on the endpoint..... 139 line");
                 const productId = req.params.id;
+                const email = req.query.email;
                 if (!ObjectId.isValid(productId)) {
                     return res.status(400).json({ message: 'Invalid product ID' });
                 }
-                const result = await productsCollection.deleteOne(
-                    { _id: new ObjectId(productId) } // Match the product by _id
-                );
-                if (result.deletedCount === 0) {
-                    return res.status(404).json({ message: 'Product not found' });
-                }
-                // Success response
-                res.status(200).json({ message: 'Product deleted successfully' });
-            } catch (error) {
-                console.error('Error deleting cart product:', error.message);
-                res.status(500).json({ message: 'An error occurred while deleting the product' });
-            }
+                const user = await usersCollection.findOne({ email: email });
 
-        })
+                if (!user) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+                const result = await usersCollection.updateOne(
+                    { email: email },
+                    { $pull: { cart: productId } }
+                );
+                if (result.modifiedCount === 0) {
+                    return res.status(404).json({ message: 'Product not found in cart' });
+                }
+                res.status(200).json({ message: 'Product removed from cart successfully' });
+            } catch (error) {
+                console.error('Error deleting cart item:', error.message);
+                res.status(500).json({ message: 'An error occurred while removing the product from cart' });
+            }
+        });
         // get all wishlist items for customers
         app.get('/wishlist-items', verifyToken, verifyCustomer, async (req, res) => {
             try {
@@ -161,16 +167,47 @@ async function run() {
                 if (!email) {
                     return res.status(400).json({ message: "Email is required" });
                 }
-                const user = await usersCollection.findOne({ email }, { projection: { wishlist: 1, _id: 0 } });
+                const user = await usersCollection.findOne({ email }, { projection: { cart: 1, _id: 0 } });
                 if (!user) {
                     return res.status(404).json({ message: "User not found with the provided email" });
                 }
-                return res.status(200).json({ wishlist: user.wishlist || [] });
+                const wishlistProductIds = user.wishlist || [];
+                if (wishlistProductIds.length === 0) {
+                    return res.status(200).json({ wishlist: [] });
+                }
+                // Fetch all products from productsCollection based on wishlistProductIds
+                const wishlistProducts = await productsCollection.find({ _id: { $in: wishlistProductIds.map(id => new ObjectId(id)) } }).toArray();
+                return res.status(200).json({ wishlist: wishlistProducts });
             } catch (error) {
                 console.error(error);
                 return res.status(500).json({ message: 'Internal server error', error: error.message });
             }
-        })
+        });
+        // remove wishlist items for customers
+        app.delete('/wishlist-items/:id', verifyToken, verifyCustomer, async (req, res) => {
+            try {
+                const productId = req.params.id;
+                const email = req.query.email;
+                if (!ObjectId.isValid(productId)) {
+                    return res.status(400).json({ message: 'Invalid product ID' });
+                }
+                const user = await usersCollection.findOne({ email: email });
+                if (!user) {
+                    return res.status(404).json({ message: 'User not found' });
+                }
+                const result = await usersCollection.updateOne(
+                    { email: email },
+                    { $pull: { wishlist: productId } }
+                );
+                if (result.modifiedCount === 0) {
+                    return res.status(404).json({ message: 'Product not found in wishlist' });
+                }
+                res.status(200).json({ message: 'Product removed from wishlist successfully' });
+            } catch (error) {
+                console.error('Error deleting wishlist product:', error.message);
+                res.status(500).json({ message: 'An error occurred while deleting the product from wishlist' });
+            }
+        });
 
         // add products to customer cart
         app.patch('/cart', async (req, res) => {
@@ -251,7 +288,6 @@ async function run() {
                 res.status(500).json({ message: 'Internal Server Error' });
             }
         })
-
         // change user role
         app.patch('/users/:id/role', verifyToken, verifyAdmin, async (req, res) => {
             try {
